@@ -43,9 +43,8 @@ def mesh_triangulate(me):
     bm.free()
 
 
-def write_mtl(scene, filepath, path_mode, copy_set, mtl_dict):
+def write_mtl(scene, filepath, path_mode, copy_set):
     from mathutils import Color, Vector
-
     world = scene.world
     if world:
         world_amb = world.ambient_color
@@ -58,140 +57,14 @@ def write_mtl(scene, filepath, path_mode, copy_set, mtl_dict):
     with open(filepath, "w", encoding="utf8", newline="\n") as f:
         fw = f.write
 
-        fw('# Blender MTL File: %r\n' % (os.path.basename(bpy.data.filepath) or "None"))
-        fw('# Material Count: %i\n' % len(mtl_dict))
+        fw('# GeklminRender GKBONE File: %r\n' % (os.path.basename(bpy.data.filepath) or "None"))
+        # ~ fw('# Material Count: %i\n' % len(mtl_dict))
 
-        mtl_dict_values = list(mtl_dict.values())
-        mtl_dict_values.sort(key=lambda m: m[0])
+        # ~ mtl_dict_values = list(mtl_dict.values())
+        # ~ mtl_dict_values.sort(key=lambda m: m[0])
 
         # Write material/image combinations we have used.
         # Using mtl_dict.values() directly gives un-predictable order.
-        for mtl_mat_name, mat, face_img in mtl_dict_values:
-            # Get the Blender data for the material and the image.
-            # Having an image named None will make a bug, dont do it :)
-
-            fw('\nnewmtl %s\n' % mtl_mat_name)  # Define a new material: matname_imgname
-
-            if mat:
-                use_mirror = mat.raytrace_mirror.use and mat.raytrace_mirror.reflect_factor != 0.0
-
-                # convert from blenders spec to 0 - 1000 range.
-                if mat.specular_shader == 'WARDISO':
-                    tspec = (0.4 - mat.specular_slope) / 0.0004
-                else:
-                    tspec = (mat.specular_hardness - 1) / 0.51
-                fw('Ns %.6f\n' % tspec)
-                del tspec
-
-                # Ambient
-                if use_mirror:
-                    fw('Ka %.6f %.6f %.6f\n' % (mat.raytrace_mirror.reflect_factor * mat.mirror_color)[:])
-                else:
-                    fw('Ka %.6f %.6f %.6f\n' % (mat.ambient, mat.ambient, mat.ambient))  # Do not use world color!
-                fw('Kd %.6f %.6f %.6f\n' % (mat.diffuse_intensity * mat.diffuse_color)[:])  # Diffuse
-                fw('Ks %.6f %.6f %.6f\n' % (mat.specular_intensity * mat.specular_color)[:])  # Specular
-                # Emission, not in original MTL standard but seems pretty common, see T45766.
-                # XXX Blender has no color emission, it's using diffuse color instead...
-                fw('Ke %.6f %.6f %.6f\n' % (mat.emit * mat.diffuse_color)[:])
-                if hasattr(mat, "raytrace_transparency") and hasattr(mat.raytrace_transparency, "ior"):
-                    fw('Ni %.6f\n' % mat.raytrace_transparency.ior)  # Refraction index
-                else:
-                    fw('Ni %.6f\n' % 1.0)
-                fw('d %.6f\n' % mat.alpha)  # Alpha (obj uses 'd' for dissolve)
-
-                # See http://en.wikipedia.org/wiki/Wavefront_.obj_file for whole list of values...
-                # Note that mapping is rather fuzzy sometimes, trying to do our best here.
-                if mat.use_shadeless:
-                    fw('illum 0\n')  # ignore lighting
-                elif mat.specular_intensity == 0:
-                    fw('illum 1\n')  # no specular.
-                elif use_mirror:
-                    if mat.use_transparency and mat.transparency_method == 'RAYTRACE':
-                        if mat.raytrace_mirror.fresnel != 0.0:
-                            fw('illum 7\n')  # Reflection, Transparency, Ray trace and Fresnel
-                        else:
-                            fw('illum 6\n')  # Reflection, Transparency, Ray trace
-                    elif mat.raytrace_mirror.fresnel != 0.0:
-                        fw('illum 5\n')  # Reflection, Ray trace and Fresnel
-                    else:
-                        fw('illum 3\n')  # Reflection and Ray trace
-                elif mat.use_transparency and mat.transparency_method == 'RAYTRACE':
-                    fw('illum 9\n')  # 'Glass' transparency and no Ray trace reflection... fuzzy matching, but...
-                else:
-                    fw('illum 2\n')  # light normaly
-
-            else:
-                # Write a dummy material here?
-                fw('Ns 0\n')
-                fw('Ka %.6f %.6f %.6f\n' % world_amb[:])  # Ambient, uses mirror color,
-                fw('Kd 0.8 0.8 0.8\n')
-                fw('Ks 0.8 0.8 0.8\n')
-                fw('d 1\n')  # No alpha
-                fw('illum 2\n')  # light normaly
-
-            # Write images!
-            if face_img:  # We have an image on the face!
-                filepath = face_img.filepath
-                if filepath:  # may be '' for generated images
-                    # write relative image path
-                    filepath = bpy_extras.io_utils.path_reference(filepath, source_dir, dest_dir,
-                                                                  path_mode, "", copy_set, face_img.library)
-                    fw('map_Kd %s\n' % filepath)  # Diffuse mapping image
-                    del filepath
-                else:
-                    # so we write the materials image.
-                    face_img = None
-
-            if mat:  # No face image. if we havea material search for MTex image.
-                image_map = {}
-                # backwards so topmost are highest priority
-                for mtex in reversed(mat.texture_slots):
-                    if mtex and mtex.texture and mtex.texture.type == 'IMAGE':
-                        image = mtex.texture.image
-                        if image:
-                            # texface overrides others
-                            if (mtex.use_map_color_diffuse and (face_img is None) and
-                                (mtex.use_map_warp is False) and (mtex.texture_coords != 'REFLECTION')):
-                                image_map["map_Kd"] = (mtex, image)
-                            if mtex.use_map_ambient:
-                                image_map["map_Ka"] = (mtex, image)
-                            # this is the Spec intensity channel but Ks stands for specular Color
-                            '''
-                            if mtex.use_map_specular:
-                                image_map["map_Ks"] = (mtex, image)
-                            '''
-                            if mtex.use_map_color_spec:  # specular color
-                                image_map["map_Ks"] = (mtex, image)
-                            if mtex.use_map_hardness:  # specular hardness/glossiness
-                                image_map["map_Ns"] = (mtex, image)
-                            if mtex.use_map_alpha:
-                                image_map["map_d"] = (mtex, image)
-                            if mtex.use_map_translucency:
-                                image_map["map_Tr"] = (mtex, image)
-                            if mtex.use_map_normal:
-                                image_map["map_Bump"] = (mtex, image)
-                            if mtex.use_map_displacement:
-                                image_map["disp"] = (mtex, image)
-                            if mtex.use_map_color_diffuse and (mtex.texture_coords == 'REFLECTION'):
-                                image_map["refl"] = (mtex, image)
-                            if mtex.use_map_emit:
-                                image_map["map_Ke"] = (mtex, image)
-
-                for key, (mtex, image) in sorted(image_map.items()):
-                    filepath = bpy_extras.io_utils.path_reference(image.filepath, source_dir, dest_dir,
-                                                                  path_mode, "", copy_set, image.library)
-                    options = []
-                    if key == "map_Bump":
-                        if mtex.normal_factor != 1.0:
-                            options.append('-bm %.6f' % mtex.normal_factor)
-                    if mtex.offset != Vector((0.0, 0.0, 0.0)):
-                        options.append('-o %.6f %.6f %.6f' % mtex.offset[:])
-                    if mtex.scale != Vector((1.0, 1.0, 1.0)):
-                        options.append('-s %.6f %.6f %.6f' % mtex.scale[:])
-                    if options:
-                        fw('%s %s %s\n' % (key, " ".join(options), repr(filepath)[1:-1]))
-                    else:
-                        fw('%s %s\n' % (key, repr(filepath)[1:-1]))
 
 
 def test_nurbs_compat(ob):
@@ -278,13 +151,13 @@ def write_file(filepath, objects, scene,
                EXPORT_SMOOTH_GROUPS_BITFLAGS=False,
                EXPORT_NORMALS=False,
                EXPORT_UV=True,
-               EXPORT_MTL=True,
+               EXPORT_MTL=False,
                EXPORT_APPLY_MODIFIERS=True,
                EXPORT_APPLY_MODIFIERS_RENDER=False,
                EXPORT_BLEN_OBS=True,
                EXPORT_GROUP_BY_OB=False,
                EXPORT_GROUP_BY_MAT=False,
-               EXPORT_KEEP_VERT_ORDER=False,
+               EXPORT_KEEP_VERT_ORDER=True,
                EXPORT_POLYGROUPS=False,
                EXPORT_CURVE_AS_NURBS=True,
                EXPORT_GLOBAL_MATRIX=None,
@@ -337,11 +210,11 @@ def write_file(filepath, objects, scene,
             fw('# Blender v%s GK OBJ File: %r\n' % (bpy.app.version_string, os.path.basename(bpy.data.filepath)))
             fw('# www.blender.org\n')
 
-            # Tell the obj file what material file to use.
-            # ~ if EXPORT_MTL:
-                # ~ mtlfilepath = os.path.splitext(filepath)[0] + ".mtl"
-                # ~ # filepath can contain non utf8 chars, use repr
-                # ~ fw('mtllib %s\n' % repr(os.path.basename(mtlfilepath))[1:-1])
+            # DESPITE THE NAME it has nothing to do with an MTL file, it is the GKBone File
+            if EXPORT_MTL:
+                mtlfilepath = os.path.splitext(filepath)[0] + ".gkbone"
+                # filepath can contain non utf8 chars, use repr
+                fw('#GKBONE %s\n' % repr(os.path.basename(mtlfilepath))[1:-1])
 
             # Initialize totals, these are updated each object
             totverts = totuvco = totno = totvc = 1
@@ -383,12 +256,12 @@ def write_file(filepath, objects, scene,
                     with ProgressReportSubstep(subprogress1, 6) as subprogress2:
                         uv_unique_count = no_unique_count = vc_unique_count = 0
 
-                        # Nurbs curve support
-                        if EXPORT_CURVE_AS_NURBS and test_nurbs_compat(ob):
-                            ob_mat = EXPORT_GLOBAL_MATRIX * ob_mat
-                            totverts += write_nurb(fw, ob, ob_mat)
-                            continue
-                        # END NURBS
+                        # ~ # Nurbs curve support
+                        # ~ if EXPORT_CURVE_AS_NURBS and test_nurbs_compat(ob):
+                            # ~ ob_mat = EXPORT_GLOBAL_MATRIX * ob_mat
+                            # ~ totverts += write_nurb(fw, ob, ob_mat)
+                            # ~ continue
+                        # ~ # END NURBS
 
                         try:
                             me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, calc_tessface=False,
@@ -404,10 +277,11 @@ def write_file(filepath, objects, scene,
                             # _must_ do this first since it re-allocs arrays
                             mesh_triangulate(me)
 
-                        me.transform(EXPORT_GLOBAL_MATRIX * ob_mat)
+                        # The following line is disabled because the object needs to be exported in its own space.
+                        # ~ me.transform(EXPORT_GLOBAL_MATRIX * ob_mat)
                         # If negative scaling, we have to invert the normals...
-                        if ob_mat.determinant() < 0.0:
-                            me.flip_normals()
+                        # ~ if ob_mat.determinant() < 0.0:
+                            # ~ me.flip_normals()
 
                         if EXPORT_UV:
                             faceuv = len(me.uv_textures) > 0
@@ -422,6 +296,10 @@ def write_file(filepath, objects, scene,
                         hascolors = len(me.vertex_colors) > 0
                         if hascolors:
                             me_vertcolors = me.vertex_colors.active.data[:]
+                            fw("\n#GKMODE GK_RENDER\n")
+                            fw("#GKMODE GK_COLORED\n")
+                            fw("#GKMODE GK_COLOR_IS_BASE\n")
+                            fw("#GKMODE GK_TEXTURED\n")
                         else:
                             me_vertcolors = [None]
                         me_verts = me.vertices[:]
@@ -723,12 +601,6 @@ def write_file(filepath, objects, scene,
 
                         subprogress2.step()
 
-                        # Write edges.
-                        # ~ if EXPORT_EDGES:
-                            # ~ for ed in edges:
-                                # ~ if ed.is_loose:
-                                    # ~ fw('l %d %d\n' % (totverts + ed.vertices[0], totverts + ed.vertices[1]))
-
                         # Make the indices global rather then per mesh
                         totverts += len(me_verts)
                         totuvco += uv_unique_count
@@ -747,8 +619,8 @@ def write_file(filepath, objects, scene,
         subprogress1.step("Finished exporting geometry, now exporting materials")
 
         # Now we have all our materials, save them
-        # ~ if EXPORT_MTL:
-            # ~ write_mtl(scene, mtlfilepath, EXPORT_PATH_MODE, copy_set, mtl_dict)
+        if EXPORT_MTL:
+            write_mtl(scene, mtlfilepath, EXPORT_PATH_MODE, copy_set)
 
         # copy all collected files.
         bpy_extras.io_utils.path_reference_copy(copy_set)
@@ -789,7 +661,7 @@ def _write(context, filepath,
         orig_frame = scene.frame_current
 
         # Export an animation?
-        if EXPORT_ANIMATION:
+        if False:
             scene_frames = range(scene.frame_start, scene.frame_end + 1)  # Up to and including the end frame.
         else:
             scene_frames = [orig_frame]  # Dont export an animation.
@@ -797,7 +669,7 @@ def _write(context, filepath,
         # Loop through all frames in the scene and export.
         progress.enter_substeps(len(scene_frames))
         for frame in scene_frames:
-            if EXPORT_ANIMATION:  # Add frame to the filepath.
+            if False:  # Add frame to the filepath.
                 context_name[2] = '_%.6d' % frame
 
             scene.frame_set(frame, 0.0)
@@ -837,11 +709,6 @@ def _write(context, filepath,
         progress.leave_substeps()
 
 
-"""
-Currently the exporter lacks these features:
-* multiple scene export (only active scene is written)
-* particles
-"""
 
 
 def save(context,
@@ -861,7 +728,7 @@ def save(context,
          group_by_material=False,
          keep_vertex_order=False,
          use_vertex_groups=False,
-         use_nurbs=True,
+         use_nurbs=False,
          use_selection=True,
          use_animation=False,
          global_matrix=None,

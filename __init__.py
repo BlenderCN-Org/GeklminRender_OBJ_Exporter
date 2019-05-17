@@ -190,12 +190,12 @@ class ExportOBJ(bpy.types.Operator, ExportHelper, IOOBJOrientationHelper):
     # context group
     use_selection = BoolProperty(
             name="Selection Only",
-            description="Export selected objects only",
-            default=False,
+            description="Export selected objects only NOTE: If you are exporting GKBone files, then you MUST have ONLY ONE object selected, and you MUST use this feature!!!",
+            default=True,
             )
     use_animation = BoolProperty(
-            name="Animation",
-            description="Write out an OBJ for each frame",
+            name="Animation (Incompatible with GKBone)",
+            description="Write out an OBJ for each frame. DO NOT USE IN CONJUNCTION WITH GKBONE EXPORTING!!!",
             default=False,
             )
 
@@ -213,8 +213,8 @@ class ExportOBJ(bpy.types.Operator, ExportHelper, IOOBJOrientationHelper):
 
     # extra data group
     use_edges = BoolProperty(
-            name="Include Edges",
-            description="",
+            name="(Does Nothing)",
+            description="Edges are not supported in GeklminRender",
             default=False,
             )
     use_smooth_groups = BoolProperty(
@@ -239,8 +239,8 @@ class ExportOBJ(bpy.types.Operator, ExportHelper, IOOBJOrientationHelper):
             default=True,
             )
     use_materials = BoolProperty(
-            name="Write Materials",
-            description="Write out the MTL file",
+            name="Write Bone Weights file",
+            description="Write out the gkbone file. DO NOT ENABLE UNLESS YOU HAVE ARMATURES ATTACHED TO YOUR MESH!!!",
             default=True,
             )
     use_triangles = BoolProperty(
@@ -249,9 +249,8 @@ class ExportOBJ(bpy.types.Operator, ExportHelper, IOOBJOrientationHelper):
             default=False,
             )
     use_nurbs = BoolProperty(
-            name="Write Nurbs",
-            description="Write nurbs curves as OBJ nurbs rather than "
-                        "converting to geometry",
+            name="LEAVE THIS AS FALSE",
+            description="GeklminRender doesn't support Nurbs Curves",
             default=False,
             )
     use_vertex_groups = BoolProperty(
@@ -267,19 +266,19 @@ class ExportOBJ(bpy.types.Operator, ExportHelper, IOOBJOrientationHelper):
             default=True,
             )
     group_by_object = BoolProperty(
-            name="Objects as OBJ Groups ",
+            name="LEAVE THIS OFF",
             description="",
             default=False,
             )
     group_by_material = BoolProperty(
-            name="Material Groups",
+            name="LEAVE THIS OFF",
             description="",
             default=False,
             )
     keep_vertex_order = BoolProperty(
             name="Keep Vertex Order",
             description="",
-            default=False,
+            default=True,
             )
 
     global_scale = FloatProperty(
