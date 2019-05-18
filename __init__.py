@@ -201,9 +201,9 @@ class ExportOBJ(bpy.types.Operator, ExportHelper, IOOBJOrientationHelper):
 
     # object group
     use_mesh_modifiers = BoolProperty(
-            name="Apply Modifiers",
+            name="Apply Modifiers (DOESNT WORK WITH GKBONE EXPORTING)",
             description="Apply modifiers",
-            default=True,
+            default=False,
             )
     use_mesh_modifiers_render = BoolProperty(
             name="Use Modifiers Render Settings",
@@ -239,9 +239,9 @@ class ExportOBJ(bpy.types.Operator, ExportHelper, IOOBJOrientationHelper):
             default=True,
             )
     use_materials = BoolProperty(
-            name="Write Bone Weights file",
-            description="Write out the gkbone file. DO NOT ENABLE UNLESS YOU HAVE ARMATURES ATTACHED TO YOUR MESH!!!",
-            default=True,
+            name="Write Bone Weights to file",
+            description="Write out the bone weights and IDs for GeklminRender instead of per-vertex color",
+            default=False,
             )
     use_triangles = BoolProperty(
             name="Triangulate Faces",

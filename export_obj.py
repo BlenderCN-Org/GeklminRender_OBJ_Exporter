@@ -164,6 +164,8 @@ def write_file(filepath, objects, scene,
                EXPORT_PATH_MODE='AUTO',
                progress=ProgressReport(),
                ):
+    from mathutils import Color, Vector
+    import math
     """
     Basic write function. The context and options must be already set
     This can be accessed externaly
@@ -172,7 +174,16 @@ def write_file(filepath, objects, scene,
     """
     if EXPORT_GLOBAL_MATRIX is None:
         EXPORT_GLOBAL_MATRIX = mathutils.Matrix()
-
+    def indices(lst, element):
+        result = []
+        offset = -1
+        while True:
+            try:
+                offset = lst.index(element, offset+1)
+            except ValueError:
+                return result
+            result.append(offset)
+    
     def veckey3d(v):
         return round(v.x, 4), round(v.y, 4), round(v.z, 4)
         
@@ -209,12 +220,18 @@ def write_file(filepath, objects, scene,
             # Write Header
             fw('# Blender v%s GK OBJ File: %r\n' % (bpy.app.version_string, os.path.basename(bpy.data.filepath)))
             fw('# www.blender.org\n')
-
-            # DESPITE THE NAME it has nothing to do with an MTL file, it is the GKBone File
+            # DESPITE THE NAME it has nothing to do with an MTL file, it is the GKBones
             if EXPORT_MTL:
                 mtlfilepath = os.path.splitext(filepath)[0] + ".gkbone"
+                arm = bpy.data.objects['Armature']
+                fw('#GKMODE GK_BONE_ANIMATED\n')
+                for i, bone in enumerate(arm.pose.bones):
+                    fw('#GKBONE %s %s\n' % (name_compat(bone.name), i))
+                    for child in bone.children:
+                        fw('#GKCHILD %s %s\n' % (name_compat(bone.name), name_compat(child.name)))
+                    #TODO: Export Bone Matrices
                 # filepath can contain non utf8 chars, use repr
-                fw('#GKBONE %s\n' % repr(os.path.basename(mtlfilepath))[1:-1])
+                # fw('#GKBONE %s\n' % repr(os.path.basename(mtlfilepath))[1:-1])
 
             # Initialize totals, these are updated each object
             totverts = totuvco = totno = totvc = 1
@@ -264,8 +281,8 @@ def write_file(filepath, objects, scene,
                         # ~ # END NURBS
 
                         try:
-                            me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, calc_tessface=False,
-                                            settings='RENDER' if EXPORT_APPLY_MODIFIERS_RENDER else 'PREVIEW')
+                            me = ob.to_mesh(scene, False, calc_tessface=False,
+                                            settings='RENDER' if False else 'PREVIEW')
                         except RuntimeError:
                             me = None
 
@@ -293,17 +310,68 @@ def write_file(filepath, objects, scene,
                             
                         #vertex colors
                         #it will usually be 1 if it had vertex colors
+                        me_verts = me.vertices[:]
                         hascolors = len(me.vertex_colors) > 0
                         if hascolors:
                             me_vertcolors = me.vertex_colors.active.data[:]
                             fw("\n#GKMODE GK_RENDER\n")
-                            fw("#GKMODE GK_COLORED\n")
-                            fw("#GKMODE GK_COLOR_IS_BASE\n")
+                            if not EXPORT_MTL: #if it doesn't have bone weights
+                                fw("#GKMODE GK_COLORED\n")
+                                fw("#GKMODE GK_COLOR_IS_BASE\n")
                             fw("#GKMODE GK_TEXTURED\n")
                         else:
                             me_vertcolors = [None]
-                        me_verts = me.vertices[:]
-
+                            
+                        
+                        
+                        #This is the part where we reassign me_vertcolors and fuck with it
+                        if EXPORT_MTL:
+                            me_bone_weights = [Color((0.0, 0.0, 0.0))] * len(me_verts)
+                            me_verts_co = [Vector((0.0, 0.0, 0.0))] * len(me_verts)
+                            for i, v in enumerate(me_verts):
+                                me_verts_co[i] = v.co
+                            for i, v in enumerate(me_bone_weights): #WEIRD issue
+                                me_bone_weights[i] = Color((0.0, 0.0, 0.0))
+                            ob_main_verts = ob_main.data.vertices
+                            ob_main_group_names = [g.name for g in ob_main.vertex_groups]
+                            for i, bone in enumerate(arm.pose.bones):
+                                if bone.name not in ob_main_group_names:
+                                    continue
+                                gidx = ob_main.vertex_groups[bone.name].index
+                                bone_verts = [v for v in ob_main_verts if gidx in [g.group for g in v.groups]]
+                                for v in bone_verts:
+                                    for g in v.groups:
+                                        if g.group == gidx: 
+                                            w = g.weight
+                                            w_towrite = i + w/2.0
+                                            #Try to find the index in me_verts for this vector
+                                            #There can be multiple occurrences of the same exact 3d point in a mesh, we need to capture them all!
+                                            vi_list = indices(me_verts_co, v.co)
+                                            for omega, vi in enumerate(vi_list):
+                                                # ~ fw("\n#START!\n#vi = %s\n" % vi)
+                                                # ~ fw("#omega = %s\n" % omega)
+                                                # ~ fw("#v = %s\n" % v.co)
+                                                # ~ fw("#w = %s\n" % w)
+                                                # ~ fw("#w_towrite = %s\n" % w_towrite)
+                                                for j, weight in enumerate(me_bone_weights[vi]):
+                                                    true_weight = (weight - math.floor(weight)) * 2.0
+                                                    # ~ fw("#me_bone_weights[vi] = %s\n" % me_bone_weights[vi])
+                                                    # ~ fw("#j = %s\n" % j)
+                                                    # ~ fw("#weight = %s\n" % weight)
+                                                    # ~ fw("#true_weight = %s\n" % true_weight)
+                                                    if true_weight < w: 
+                                                        # ~ fw("#SWAP!\n")
+                                                        weight_swapper = float(weight)
+                                                        # ~ fw("#weight swapper = %s, weight = %s\n" % (weight_swapper, weight))
+                                                        (me_bone_weights[vi])[j] = float(w_towrite)
+                                                        # ~ fw("#me_bone_weights[vi] = %s\n" % me_bone_weights[vi])
+                                                        w = float(true_weight)
+                                                        w_towrite = float(weight_swapper)
+                                                        # ~ fw("#w = %s\n" % w)
+                                                        # ~ fw("#w_towrite = %s\n" % w_towrite)
+                        else:
+                            me_bone_weights = [Color((0.0, 0.0, 0.0))] * len(me_verts)
+                        
                         # Make our own list so it can be sorted to reduce context switching
                         face_index_pairs = [(face, index) for index, face in enumerate(me.polygons)]
                         # faces = [ f for f in me.tessfaces ]
@@ -448,28 +516,39 @@ def write_file(filepath, objects, scene,
                             del normals_to_idx, no_get, no_key, no_val
                         else:
                             loops_to_normals = []
-						
-						#COLORS, copied version of normal exporting
-						
-                        if hascolors:
-                            co_key = co_val = None
-                            colors_to_idx = {}
-                            co_get = colors_to_idx.get
+
+
+                        #COLORS, copied version of normal exporting
+                        #but first, we sneak this shit in
+                        # ~ if EXPORT_MTL:
+                            # ~ for qbert, colorino in enumerate(me_vertcolors_co):
+                                # ~ fw("#Processing %s out of %s in me_vertcolors_co\n" % (qbert, len(me_vertcolors_co)))
+                                # ~ me_vertcolors_co[qbert] = me_bone_weights[qbert]
+                        if EXPORT_MTL:
+                            for v in me_bone_weights:
+                                fw('vc %.4f %.4f %.4f\n' % colveckey3d(v))
+                                vc_unique_count += 1
                             loops_to_colors = [0] * len(loops)
-                            for f, f_index in face_index_pairs:
-                                for l_idx in f.loop_indices:
-                                    # ~ co_key = colveckey3d(me_vertcolors[loops[l_idx].vertex_index].color)
-                                    co_key = colveckey3d(me_vertcolors[l_idx].color)
-                                    co_val = co_get(co_key)
-                                    if co_val is None:
-                                        co_val = colors_to_idx[co_key] = vc_unique_count
-                                        fw('vc %.4f %.4f %.4f\n' % co_key)
-                                        vc_unique_count += 1
-                                    loops_to_colors[l_idx] = co_val
-                            del colors_to_idx, co_get, co_key, co_val
                         else:
-                            loops_to_colors = [0] * len(loops)
-                            fw('vc 0 0 0\n')
+                            if hascolors:
+                                co_key = co_val = None
+                                colors_to_idx = {}
+                                co_get = colors_to_idx.get
+                                loops_to_colors = [0] * len(loops)
+                                for f, f_index in face_index_pairs:
+                                    for l_idx in f.loop_indices:
+                                        # ~ co_key = colveckey3d(me_vertcolors[loops[l_idx].vertex_index].color)
+                                        co_key = colveckey3d(me_vertcolors[l_idx].color)
+                                        co_val = co_get(co_key)
+                                        if co_val is None:
+                                            co_val = colors_to_idx[co_key] = vc_unique_count
+                                            fw('vc %.4f %.4f %.4f\n' % co_key)
+                                            vc_unique_count += 1
+                                        loops_to_colors[l_idx] = co_val
+                                del colors_to_idx, co_get, co_key, co_val
+                            else:
+                                loops_to_colors = [0] * len(loops)
+                                fw('vc 0 0 0\n')
 
                         if not faceuv:
                             f_image = None
@@ -578,13 +657,13 @@ def write_file(filepath, objects, scene,
                                         fw(" %d/%d/%d/%d" % (totverts + v.index,
                                                           totuvco + uv_face_mapping[f_index][vi],
                                                           totno + loops_to_normals[li],
-                                                          totvc + loops_to_colors[li]
+                                                          (totvc + loops_to_colors[li]) if not EXPORT_MTL else (totverts + v.index)
                                                           ))  # vert, uv, normal
                                 else:  # No Normals
                                     for vi, v, li in f_v:
                                         fw(" %d/%d//%d" % (totverts + v.index,
                                                        totuvco + uv_face_mapping[f_index][vi],
-                                                       totvc + loops_to_colors[li]
+                                                       (totvc + loops_to_colors[li]) if not EXPORT_MTL else (totverts + v.index)
                                                        ))  # vert, uv
 
                                 face_vert_index += len(f_v)
@@ -592,10 +671,10 @@ def write_file(filepath, objects, scene,
                             else:  # No UV's
                                 if EXPORT_NORMALS:
                                     for vi, v, li in f_v:
-                                        fw(" %d//%d/%d" % (totverts + v.index, totno + loops_to_normals[li], totvc + loops_to_colors[li]))
+                                        fw(" %d//%d/%d" % (totverts + v.index, totno + loops_to_normals[li], (totvc + loops_to_colors[li]) if not EXPORT_MTL else (totverts + v.index)))
                                 else:  # No Normals
                                     for vi, v, li in f_v:
-                                        fw(" %d///%d" % (totverts + v.index, totvc + loops_to_colors[li]))
+                                        fw(" %d///%d" % (totverts + v.index, (totvc + loops_to_colors[li]) if not EXPORT_MTL else (totverts + v.index)))
 
                             fw('\n')
 
@@ -619,8 +698,8 @@ def write_file(filepath, objects, scene,
         subprogress1.step("Finished exporting geometry, now exporting materials")
 
         # Now we have all our materials, save them
-        if EXPORT_MTL:
-            write_mtl(scene, mtlfilepath, EXPORT_PATH_MODE, copy_set)
+        # ~ if EXPORT_MTL:
+            # ~ write_mtl(scene, mtlfilepath, EXPORT_PATH_MODE, copy_set)
 
         # copy all collected files.
         bpy_extras.io_utils.path_reference_copy(copy_set)
