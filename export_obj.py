@@ -227,6 +227,9 @@ def write_file(filepath, objects, scene,
                 fw('#GKMODE GK_BONE_ANIMATED\n')
                 for i, bone in enumerate(arm.pose.bones):
                     fw('#GKBONE %s %s\n' % (name_compat(bone.name), i))
+                    # ~ for child in bone.children:
+                        # ~ fw('#GKCHILD %s %s\n' % (name_compat(bone.name), name_compat(child.name)))
+                for i, bone in enumerate(arm.pose.bones):
                     for child in bone.children:
                         fw('#GKCHILD %s %s\n' % (name_compat(bone.name), name_compat(child.name)))
                     #TODO: Export Bone Matrices
@@ -343,14 +346,14 @@ def write_file(filepath, objects, scene,
                                     for g in v.groups:
                                         if g.group == gidx: 
                                             w = g.weight
-                                            w_towrite = i + w/2.0
+                                            w_towrite = 1 + i + w/2.0
                                             #Try to find the index in me_verts for this vector
                                             #There can be multiple occurrences of the same exact 3d point in a mesh, we need to capture them all!
                                             vi_list = indices(me_verts_co, v.co)
                                             for omega, vi in enumerate(vi_list):
                                                 # ~ fw("\n#START!\n#vi = %s\n" % vi)
                                                 # ~ fw("#omega = %s\n" % omega)
-                                                # ~ fw("#v = %s\n" % v.co)
+                                                # ~ fw("#v = %s but survey says %s\n" % (v.co, me_verts[vi].co))
                                                 # ~ fw("#w = %s\n" % w)
                                                 # ~ fw("#w_towrite = %s\n" % w_towrite)
                                                 for j, weight in enumerate(me_bone_weights[vi]):
