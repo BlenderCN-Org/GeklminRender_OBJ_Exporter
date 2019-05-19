@@ -226,9 +226,9 @@ def write_file(filepath, objects, scene,
                 arm = bpy.data.objects['Armature']
                 fw('#GKMODE GK_BONE_ANIMATED\n')
                 for i, bone in enumerate(arm.pose.bones):
-                    fw('#GKBONE %s %s\n' % (name_compat(bone.name), i))
-                    # ~ for child in bone.children:
-                        # ~ fw('#GKCHILD %s %s\n' % (name_compat(bone.name), name_compat(child.name)))
+                    fw('#GKBONE %s %s\n' % (name_compat(bone.name), i + 1))
+                    #Write the local_matrix to file
+                    fw('#GKMATRIX %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s \n' % (arm.data.bones[i].matrix_local[0][0], arm.data.bones[i].matrix_local[0][1], arm.data.bones[i].matrix_local[0][2], arm.data.bones[i].matrix_local[0][3], arm.data.bones[i].matrix_local[1][0], arm.data.bones[i].matrix_local[1][1], arm.data.bones[i].matrix_local[1][2], arm.data.bones[i].matrix_local[1][3], arm.data.bones[i].matrix_local[2][0], arm.data.bones[i].matrix_local[2][1], arm.data.bones[i].matrix_local[2][2], arm.data.bones[i].matrix_local[2][3], arm.data.bones[i].matrix_local[3][0], arm.data.bones[i].matrix_local[3][1], arm.data.bones[i].matrix_local[3][2], arm.data.bones[i].matrix_local[3][3]))
                 for i, bone in enumerate(arm.pose.bones):
                     for child in bone.children:
                         fw('#GKCHILD %s %s\n' % (name_compat(bone.name), name_compat(child.name)))
